@@ -1,4 +1,3 @@
-
 class WithdrawMoneyView(TransactionCreateMixin):
     form_class = WithdrawForm
     title = "Withdraw Money"
@@ -16,14 +15,14 @@ class WithdrawMoneyView(TransactionCreateMixin):
             messages.warning(self.request, "Bank Is Bnkrupt")
         else:
             self.request.user.account.balance -= form.cleaned_data.get("amount")
-            # balance = 300
-            # amount = 5000
+
             self.request.user.account.save(update_fields=["balance"])
 
             messages.success(self.request,f'Successfully withdrawn {"{:,.2f}".format(float(amount))}$ from your account')
-            
+            send_transaction_email(self.request.user, amount, 'Withdrawal Message', './transactions/withdraw_email.html')
         return super().form_valid(form)
-    
+
+
 
 
 
@@ -43,6 +42,10 @@ class SendMoneyView(TransactionCreateMixin):
         amount = form.cleaned_data.get("amount")
         sender = self.request.user.account
 
+        if sender.balance < amount:
+            messages.warning(self.request, "Insufficient funds to complete this transaction.")
+            return self.form_invalid(form)
+
         try:
             reciver = UserBankAccount.objects.get(account_no=account_no)
             reciver.balance += amount
@@ -50,9 +53,11 @@ class SendMoneyView(TransactionCreateMixin):
             reciver.save(update_fields=["balance"])
             sender.save(update_fields=["balance"])
             messages.success(self.request, "Send Money Successful")
-        
+            send_transaction_email(self.request.user, amount, 'Send Money', 'transactions/sendmoney_email.html')
+            send_transaction_email(reciver.user, amount, 'Receive Money', 'transactions/receivemoney_email.html')
 
             return super().form_valid(form)
+        
         except UserBankAccount.DoesNotExist:
             form.add_error("account_no", "Invalid Account No")
             return super().form_invalid(form)
